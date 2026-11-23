@@ -1,0 +1,30 @@
+name: antnexo
+description: "In-app feedback for Flutter apps: the AntNexo board (ideas, roadmap, changelog) in a native sheet."
+version: 1.0.0
+homepage: https://antnexo.com
+repository: https://github.com/AntNexo/antnexo-flutter
+issue_tracker: https://github.com/AntNexo/antnexo-flutter/issues
+topics: [feedback, roadmap, changelog, webview]
+
+environment:
+  sdk: ^3.9.0
+  flutter: '>=3.35.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  pigeon: ^29.0.1
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.antnexo.flutter
+        pluginClass: AntNexoPlugin
+      ios:
+        pluginClass: AntNexoPlugin

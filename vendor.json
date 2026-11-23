@@ -1,0 +1,10 @@
+{
+  "swift": {
+    "tag": "v1.2.0",
+    "commit": "e8b83015368e8344456fedb43a5b553c18708b1c"
+  },
+  "android": {
+    "tag": "v1.2.0",
+    "commit": "11775bce31a1bae1865a46aa790392c28576d3bd"
+  }
+}
