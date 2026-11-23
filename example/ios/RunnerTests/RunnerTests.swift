@@ -47,3 +47,28 @@ struct RunnerTests {
     #expect(net.message == "AntNexo: network")
   }
 }
+
+struct OpeningsTests {
+  @Test func aCancelledOpeningStaysCancelledWhicheverArrivesFirst() {
+    var o = Openings()
+    #expect(!o.isCancelled(0))
+    o.cancel(upTo: 0)
+    #expect(o.isCancelled(0))
+    #expect(!o.isCancelled(1))
+    o.cancel(upTo: 3)
+    o.cancel(upTo: 1)
+    #expect(o.isCancelled(3))
+    #expect(!o.isCancelled(4))
+    o.reset()
+    #expect(!o.isCancelled(0))
+  }
+
+  @MainActor @Test func endedResumesOnceWhicheverComesFirst() async {
+    let early = Ended()
+    early.fire()
+    await early.wait()  // fired before waiting: returns at once
+    let late = Ended()
+    Task { @MainActor in late.fire(); late.fire() }
+    await late.wait()
+  }
+}

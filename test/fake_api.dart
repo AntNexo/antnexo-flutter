@@ -6,6 +6,8 @@ import 'package:antnexo/src/messages.g.dart';
 class FakeApi extends AntNexoHostApi {
   final calls = <String>[];
   final showArgs = <({String? tab, bool screenshot, String? token})>[];
+  final showGenerations = <int>[];
+  final cancelled = <int>[];
   Completer<void>? showCompleter;
   Object? configureError;
   Object? showError;
@@ -29,8 +31,14 @@ class FakeApi extends AntNexoHostApi {
   NativeOptions? lastOptions;
 
   @override
-  Future<void> show(String? tab, bool screenshot, String? token) {
+  Future<void> show(
+    String? tab,
+    bool screenshot,
+    String? token,
+    int generation,
+  ) {
     calls.add('show');
+    showGenerations.add(generation);
     showArgs.add((tab: tab, screenshot: screenshot, token: token));
     if (showError != null) return Future.error(showError!);
     showCompleter = Completer<void>();
@@ -41,10 +49,14 @@ class FakeApi extends AntNexoHostApi {
   void finishShow() => showCompleter?.complete();
 
   @override
-  Future<void> close() async {
+  Future<void> close(int cancelled) async {
     calls.add('close');
-    finishShow();
+    this.cancelled.add(cancelled);
+    if (closeCompletesShow) finishShow();
   }
+
+  /// false: close() leaves the sheet closing until finishShow() (a slow dismiss animation).
+  bool closeCompletesShow = true;
 
   @override
   Future<int> unreadCount() async {
@@ -54,8 +66,9 @@ class FakeApi extends AntNexoHostApi {
   }
 
   @override
-  Future<void> logout() async {
+  Future<void> logout(int cancelled) async {
     calls.add('logout');
+    this.cancelled.add(cancelled);
     finishShow();
   }
 

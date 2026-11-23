@@ -220,4 +220,23 @@ void main() {
       );
     },
   );
+
+  test(
+    'native gets the opening generation, and close/logout the generation they cancel',
+    () async {
+      await configure();
+      final f = AntNexo.show();
+      await pumpEventQueue();
+      expect(api.showGenerations, [0]);
+      AntNexo.close(); // cancels opening 0 even if native sees it before that show
+      await f;
+      expect(api.cancelled, [0]);
+      final g = AntNexo.show();
+      await pumpEventQueue();
+      expect(api.showGenerations, [0, 1]);
+      await AntNexo.logout();
+      await g;
+      expect(api.cancelled, [0, 1]);
+    },
+  );
 }

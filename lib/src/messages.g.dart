@@ -313,7 +313,8 @@ class AntNexoHostApi {
 
   final String pigeonVar_messageChannelSuffix;
 
-  /// Posts come from this plugin: platform flutter, the plugin's version.
+  /// Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+  /// hot restart), so it also resets the cancelled generation.
   Future<void> setWrapper(String sdk) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.antnexo.AntNexoHostApi.setWrapper$pigeonVar_messageChannelSuffix';
@@ -358,8 +359,14 @@ class AntNexoHostApi {
   }
 
   /// Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
-  /// or it couldn't open).
-  Future<void> show(String? tab, bool screenshot, String? token) async {
+  /// or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+  /// a later close or logout cancelled (one native may receive after this show) completes without a sheet.
+  Future<void> show(
+    String? tab,
+    bool screenshot,
+    String? token,
+    int generation,
+  ) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.antnexo.AntNexoHostApi.show$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -368,7 +375,7 @@ class AntNexoHostApi {
       binaryMessenger: pigeonVar_binaryMessenger,
     );
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
-      <Object?>[tab, screenshot, token],
+      <Object?>[tab, screenshot, token, generation],
     );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
     _extractReplyValueOrThrow(
@@ -378,8 +385,8 @@ class AntNexoHostApi {
     );
   }
 
-  /// Closes the sheet as Done does.
-  Future<void> close() async {
+  /// Closes the sheet as Done does, and cancels openings up to generation [cancelled].
+  Future<void> close(int cancelled) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.antnexo.AntNexoHostApi.close$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -387,7 +394,9 @@ class AntNexoHostApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[cancelled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
     _extractReplyValueOrThrow(
       pigeonVar_replyList,
@@ -415,8 +424,8 @@ class AntNexoHostApi {
     return pigeonVar_replyValue! as int;
   }
 
-  /// Signs the person out, closing an open sheet.
-  Future<void> logout() async {
+  /// Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled].
+  Future<void> logout(int cancelled) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.antnexo.AntNexoHostApi.logout$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -424,7 +433,9 @@ class AntNexoHostApi {
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[cancelled],
+    );
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
     _extractReplyValueOrThrow(
       pigeonVar_replyList,

@@ -361,19 +361,21 @@ class MessagesPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendable {
 
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol AntNexoHostApi {
-  /// Posts come from this plugin: platform flutter, the plugin's version.
+  /// Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+  /// hot restart), so it also resets the cancelled generation.
   func setWrapper(sdk: String) throws
   /// Errors: invalid_host, invalid_workspace.
   func configure(host: String, workspace: String, options: NativeOptions) throws
   /// Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
-  /// or it couldn't open).
-  func show(tab: String?, screenshot: Bool, token: String?) async throws
-  /// Closes the sheet as Done does.
-  func close() throws
+  /// or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+  /// a later close or logout cancelled (one native may receive after this show) completes without a sheet.
+  func show(tab: String?, screenshot: Bool, token: String?, generation: Int64) async throws
+  /// Closes the sheet as Done does, and cancels openings up to generation [cancelled].
+  func close(cancelled: Int64) throws
   /// What's new unread count. Errors: not_configured, http (details: status), bad_response, network.
   func unreadCount() async throws -> Int64
-  /// Signs the person out, closing an open sheet.
-  func logout() async throws
+  /// Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled].
+  func logout(cancelled: Int64) async throws
   /// Debug builds only (the example's scripted checks): evaluates JavaScript in the open sheet, the result as a string.
   func evaluateInSheet(js: String) async throws -> String?
 }
@@ -384,7 +386,8 @@ class AntNexoHostApiSetup {
   /// Sets up an instance of `AntNexoHostApi` to handle messages through the `binaryMessenger`.
   static func setUp(binaryMessenger: FlutterBinaryMessenger, api: AntNexoHostApi?, messageChannelSuffix: String = "") {
     let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
-    /// Posts come from this plugin: platform flutter, the plugin's version.
+    /// Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+    /// hot restart), so it also resets the cancelled generation.
     let setWrapperChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.setWrapper\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       setWrapperChannel.setMessageHandler { message, reply in
@@ -419,7 +422,8 @@ class AntNexoHostApiSetup {
       configureChannel.setMessageHandler(nil)
     }
     /// Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
-    /// or it couldn't open).
+    /// or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+    /// a later close or logout cancelled (one native may receive after this show) completes without a sheet.
     let showChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.show\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       showChannel.setMessageHandler { message, reply in
@@ -427,9 +431,10 @@ class AntNexoHostApiSetup {
         let tabArg: String? = nilOrValue(args[0])
         let screenshotArg = args[1] as! Bool
         let tokenArg: String? = nilOrValue(args[2])
+        let generationArg = args[3] as! Int64
         Task { @MainActor in
           do {
-            try await api.show(tab: tabArg, screenshot: screenshotArg, token: tokenArg)
+            try await api.show(tab: tabArg, screenshot: screenshotArg, token: tokenArg, generation: generationArg)
             reply(wrapResult(nil))
           } catch {
             reply(wrapError(error))
@@ -439,12 +444,14 @@ class AntNexoHostApiSetup {
     } else {
       showChannel.setMessageHandler(nil)
     }
-    /// Closes the sheet as Done does.
+    /// Closes the sheet as Done does, and cancels openings up to generation [cancelled].
     let closeChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.close\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
-      closeChannel.setMessageHandler { _, reply in
+      closeChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let cancelledArg = args[0] as! Int64
         do {
-          try api.close()
+          try api.close(cancelled: cancelledArg)
           reply(wrapResult(nil))
         } catch {
           reply(wrapError(error))
@@ -469,13 +476,15 @@ class AntNexoHostApiSetup {
     } else {
       unreadCountChannel.setMessageHandler(nil)
     }
-    /// Signs the person out, closing an open sheet.
+    /// Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled].
     let logoutChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.logout\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
-      logoutChannel.setMessageHandler { _, reply in
+      logoutChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let cancelledArg = args[0] as! Int64
         Task { @MainActor in
           do {
-            try await api.logout()
+            try await api.logout(cancelled: cancelledArg)
             reply(wrapResult(nil))
           } catch {
             reply(wrapError(error))

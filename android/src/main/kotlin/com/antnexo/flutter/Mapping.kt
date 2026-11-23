@@ -42,3 +42,22 @@ internal fun flutterError(t: Throwable): FlutterError {
     }
     return FlutterError(code, "AntNexo: $code", status?.let { mapOf("status" to it) })
 }
+
+/**
+ * Dart's close/logout generations: an opening whose show native receives after the close or logout that cancelled it
+ * (messages and coroutines don't keep their order) completes without a sheet. Main thread only.
+ */
+internal class Openings {
+    private var cancelledUpTo = -1L
+
+    fun cancel(upTo: Long) {
+        cancelledUpTo = maxOf(cancelledUpTo, upTo)
+    }
+
+    fun isCancelled(generation: Long) = generation <= cancelledUpTo
+
+    /** A new Dart isolate (hot restart) counts from 0 again. */
+    fun reset() {
+        cancelledUpTo = -1
+    }
+}

@@ -32,6 +32,9 @@ class AntNexoSheet extends StatefulWidget {
 class _AntNexoSheetState extends State<AntNexoSheet> {
   bool _open = false;
 
+  /// Shown again while the previous sheet was still closing: open a new one once it's gone.
+  bool _reopen = false;
+
   @override
   void initState() {
     super.initState();
@@ -44,6 +47,7 @@ class _AntNexoSheetState extends State<AntNexoSheet> {
     if (!old.visible && widget.visible) {
       _show();
     } else if (old.visible && !widget.visible && _open) {
+      _reopen = false;
       AntNexo.close();
     }
   }
@@ -55,7 +59,10 @@ class _AntNexoSheetState extends State<AntNexoSheet> {
   }
 
   void _show() {
-    if (_open) return;
+    if (_open) {
+      _reopen = true;
+      return;
+    }
     _open = true;
     unawaited(
       AntNexo.show(tab: widget.tab, screenshot: widget.screenshot)
@@ -64,6 +71,12 @@ class _AntNexoSheetState extends State<AntNexoSheet> {
           })
           .whenComplete(() {
             _open = false;
+            if (_reopen && mounted && widget.visible) {
+              _reopen = false;
+              _show();
+              return;
+            }
+            _reopen = false;
             if (mounted) widget.onDismiss();
           }),
     );

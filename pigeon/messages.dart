@@ -37,27 +37,29 @@ class NativeEvent {
 
 @HostApi()
 abstract class AntNexoHostApi {
-  /// Posts come from this plugin: platform flutter, the plugin's version.
+  /// Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+  /// hot restart), so it also resets the cancelled generation.
   void setWrapper(String sdk);
 
   /// Errors: invalid_host, invalid_workspace.
   void configure(String host, String workspace, NativeOptions options);
 
   /// Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
-  /// or it couldn't open).
+  /// or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+  /// a later close or logout cancelled (one native may receive after this show) completes without a sheet.
   @async
-  void show(String? tab, bool screenshot, String? token);
+  void show(String? tab, bool screenshot, String? token, int generation);
 
-  /// Closes the sheet as Done does.
-  void close();
+  /// Closes the sheet as Done does, and cancels openings up to generation [cancelled].
+  void close(int cancelled);
 
   /// What's new unread count. Errors: not_configured, http (details: status), bad_response, network.
   @async
   int unreadCount();
 
-  /// Signs the person out, closing an open sheet.
+  /// Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled].
   @async
-  void logout();
+  void logout(int cancelled);
 
   /// Debug builds only (the example's scripted checks): evaluates JavaScript in the open sheet, the result as a string.
   @async

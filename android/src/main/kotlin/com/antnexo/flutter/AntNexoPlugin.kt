@@ -24,6 +24,7 @@ class AntNexoPlugin : FlutterPlugin, ActivityAware, AntNexoHostApi {
     private var activity: Activity? = null
     private var events: AntNexoEventsApi? = null
     private var scope: CoroutineScope? = null
+    private val openings = Openings()
 
     /** SDK events to Dart while this engine is attached (main thread, like the SDK's listener list). */
     private val listener: (AntNexoEvent) -> Unit = { e ->
@@ -75,11 +76,12 @@ class AntNexoPlugin : FlutterPlugin, ActivityAware, AntNexoHostApi {
 
     @OptIn(AntNexoWrapperApi::class)
     override fun setWrapper(sdk: String) {
+        openings.reset()
         AntNexo.setWrapper(BridgePlatform.FLUTTER, sdk)
     }
 
     override fun configure(host: String, workspace: String, options: NativeOptions) {
-        val context = binding?.applicationContext ?: throw FlutterError("network", "AntNexo: network", null)
+        val context = binding?.applicationContext ?: throw FlutterError("unavailable", "AntNexo: unavailable", null)
         try {
             AntNexo.configure(context, host, workspace, feedbackOptions(options))
         } catch (t: Throwable) {
@@ -88,12 +90,15 @@ class AntNexoPlugin : FlutterPlugin, ActivityAware, AntNexoHostApi {
     }
 
     /** Completes when the sheet is gone: closed, or it couldn't open. The token is for this opening only. */
-    override suspend fun show(tab: String?, screenshot: Boolean, token: String?) {
+    override suspend fun show(tab: String?, screenshot: Boolean, token: String?, generation: Long) {
+        if (openings.isCancelled(generation)) return
         val a = activity
         if (a == null) {
             Log.w(TAG, "AntNexo.show(): no activity")
             return
         }
+        // Kept until the sheet ends: only the SDK's prepare reads it, and a second prepare can't start while this
+        // opening is presenting; onClosed below drops it right after the SDK clears presenting.
         AntNexo.identify(token?.takeIf { it.isNotEmpty() }?.let { t -> TokenProvider { t } })
         suspendCancellableCoroutine { cont ->
             AntNexo.show(a, tabOf(tab), screenshot, onClosed = {
@@ -104,7 +109,8 @@ class AntNexoPlugin : FlutterPlugin, ActivityAware, AntNexoHostApi {
         }
     }
 
-    override fun close() {
+    override fun close(cancelled: Long) {
+        openings.cancel(cancelled)
         AntNexo.close()
     }
 
@@ -114,7 +120,8 @@ class AntNexoPlugin : FlutterPlugin, ActivityAware, AntNexoHostApi {
         throw flutterError(t)
     }
 
-    override suspend fun logout() {
+    override suspend fun logout(cancelled: Long) {
+        openings.cancel(cancelled)
         AntNexo.identify(null)
         try {
             AntNexo.logout()

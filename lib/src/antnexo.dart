@@ -19,7 +19,8 @@ abstract final class AntNexo {
   static bool _presenting = false;
   static TokenProvider? _tokenProvider;
 
-  /// Bumped by close() and logout(): an opening still waiting for its token never happens.
+  /// Bumped by close() and logout(): an opening still waiting for its token never happens, and native drops an opening
+  /// whose show it receives after the close or logout that cancelled it.
   static int _generation = 0;
   static StreamController<AntNexoEvent> _events = StreamController.broadcast();
   static final _EventsHandler _handler = _EventsHandler();
@@ -65,7 +66,7 @@ abstract final class AntNexo {
       final token = await _identifyToken();
       // closed or logged out meanwhile: the token may be the previous person's
       if (gen != _generation) return;
-      await _call(() => _api.show(tab?.wire, screenshot, token));
+      await _call(() => _api.show(tab?.wire, screenshot, token, gen));
     } finally {
       _presenting = false;
     }
@@ -73,8 +74,8 @@ abstract final class AntNexo {
 
   /// Closes the sheet, as Done does.
   static void close() {
-    _generation++;
-    unawaited(_call(_api.close).catchError((_) {}));
+    final cancelled = _generation++;
+    unawaited(_call(() => _api.close(cancelled)).catchError((_) {}));
   }
 
   /// Whether a sheet is up or opening.
@@ -85,8 +86,8 @@ abstract final class AntNexo {
 
   /// Signs the person out of the sheet (closing it if open). Call it on every account switch in your app.
   static Future<void> logout() {
-    _generation++;
-    return _call(_api.logout);
+    final cancelled = _generation++;
+    return _call(() => _api.logout(cancelled));
   }
 
   /// Posts, the What's new count, sign-in, closing.

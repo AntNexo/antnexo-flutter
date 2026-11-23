@@ -360,21 +360,25 @@ private open class MessagesPigeonCodec : StandardMessageCodec() {
 
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface AntNexoHostApi {
-  /** Posts come from this plugin: platform flutter, the plugin's version. */
+  /**
+   * Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+   * hot restart), so it also resets the cancelled generation.
+   */
   fun setWrapper(sdk: String)
   /** Errors: invalid_host, invalid_workspace. */
   fun configure(host: String, workspace: String, options: NativeOptions)
   /**
    * Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
-   * or it couldn't open).
+   * or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+   * a later close or logout cancelled (one native may receive after this show) completes without a sheet.
    */
-  suspend fun show(tab: String?, screenshot: Boolean, token: String?)
-  /** Closes the sheet as Done does. */
-  fun close()
+  suspend fun show(tab: String?, screenshot: Boolean, token: String?, generation: Long)
+  /** Closes the sheet as Done does, and cancels openings up to generation [cancelled]. */
+  fun close(cancelled: Long)
   /** What's new unread count. Errors: not_configured, http (details: status), bad_response, network. */
   suspend fun unreadCount(): Long
-  /** Signs the person out, closing an open sheet. */
-  suspend fun logout()
+  /** Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled]. */
+  suspend fun logout(cancelled: Long)
   /** Debug builds only (the example's scripted checks): evaluates JavaScript in the open sheet, the result as a string. */
   suspend fun evaluateInSheet(js: String): String?
 
@@ -433,9 +437,10 @@ interface AntNexoHostApi {
             val tabArg = args[0] as String?
             val screenshotArg = args[1] as Boolean
             val tokenArg = args[2] as String?
+            val generationArg = args[3] as Long
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
-                api.show(tabArg, screenshotArg, tokenArg)
+                api.show(tabArg, screenshotArg, tokenArg, generationArg)
                 listOf(null)
               } catch (exception: Throwable) {
                 MessagesPigeonUtils.wrapError(exception)
@@ -450,9 +455,11 @@ interface AntNexoHostApi {
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.close$separatedMessageChannelSuffix", codec)
         if (api != null) {
-          channel.setMessageHandler { _, reply ->
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val cancelledArg = args[0] as Long
             val wrapped: List<Any?> = try {
-              api.close()
+              api.close(cancelledArg)
               listOf(null)
             } catch (exception: Throwable) {
               MessagesPigeonUtils.wrapError(exception)
@@ -483,10 +490,12 @@ interface AntNexoHostApi {
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.logout$separatedMessageChannelSuffix", codec)
         if (api != null) {
-          channel.setMessageHandler { _, reply ->
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val cancelledArg = args[0] as Long
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
-                api.logout()
+                api.logout(cancelledArg)
                 listOf(null)
               } catch (exception: Throwable) {
                 MessagesPigeonUtils.wrapError(exception)
