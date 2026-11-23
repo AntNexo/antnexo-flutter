@@ -63,7 +63,8 @@ jobs:
         working-directory: example/android
         run: ./gradlew --no-daemon --console=plain :antnexo:testDebugUnitTest
 
-  # The oldest Flutter we support (pubspec.yaml): a fresh app of that version with the plugin builds for Android.
+  # The oldest Flutter we support (pubspec.yaml): a fresh app of that version with the plugin builds for Android. (The
+  # plugin's own tests need newer Dart: its dev dependency pigeon does; apps never resolve it.)
   floor:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -85,13 +86,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-
-      - name: Test the plugin on 3.35
-        working-directory: plugin
-        run: |
-          flutter pub get
-          flutter analyze lib test
-          flutter test
 
       - name: A 3.35 app with the plugin builds
         run: |

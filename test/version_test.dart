@@ -15,8 +15,17 @@ void main() {
 
   test('the podspec and the Android library have the same version', () {
     final podspec = File('ios/antnexo.podspec').readAsStringSync();
-    expect(RegExp(r"s\.version\s*=\s*'([^']+)'").firstMatch(podspec)?.group(1), sdkVersion);
+    expect(
+      RegExp(r"s\.version\s*=\s*'([^']+)'").firstMatch(podspec)?.group(1),
+      sdkVersion,
+    );
     final gradle = File('android/build.gradle.kts').readAsStringSync();
-    expect(RegExp(r'^version = "([^"]+)"', multiLine: true).firstMatch(gradle)?.group(1), sdkVersion);
+    expect(
+      RegExp(
+        r'^version = "([^"]+)"',
+        multiLine: true,
+      ).firstMatch(gradle)?.group(1),
+      sdkVersion,
+    );
   });
 }
