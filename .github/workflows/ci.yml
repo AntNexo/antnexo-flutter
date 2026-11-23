@@ -129,3 +129,18 @@ jobs:
           printf '  config:\n    enable-swift-package-manager: false\n' >> pubspec.yaml
           flutter pub add antnexo --path ../antnexo_flutter
           flutter build ios --simulator --debug
+
+      - name: Flutter 3.35
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.35.x'
+          channel: stable
+          cache: true
+
+      - name: A 3.35 app with the plugin builds for iOS (SwiftPM)
+        run: |
+          flutter create --platforms ios floor_ios
+          cd floor_ios
+          printf '  config:\n    enable-swift-package-manager: true\n' >> pubspec.yaml
+          flutter pub add antnexo --path ../antnexo_flutter
+          flutter build ios --simulator --debug

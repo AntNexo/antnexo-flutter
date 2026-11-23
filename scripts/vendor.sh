@@ -85,6 +85,36 @@ v = {"swift": {"tag": st, "commit": ss}, "android": {"tag": at, "commit": as_}}
 open(f, "w").write(json.dumps(v, indent=2) + "\n")
 ' "$out/vendor.json" "$swift_tag" "$swift_sha" "$android_tag" "$android_sha"
 
+# The Android SDK's dependencies (its build.gradle.kts through gradle/libs.versions.toml at the tag) must be the ones
+# android/build.gradle.kts declares, version for version: that file is ours, so it is checked, never written.
+deps_ok=1
+python3 - "$work/android" "$root/android/build.gradle.kts" <<'PY' || deps_ok=0
+import re, sys
+# gradle/libs.versions.toml, read without tomllib (Python 3.11+): [versions] name = "x", [libraries] alias = { module =
+# "g:a", version.ref = "name" }.
+sdk, ours = sys.argv[1], open(sys.argv[2]).read()
+toml = open(f"{sdk}/gradle/libs.versions.toml").read()
+def section(name):
+    m = re.search(rf'^\[{name}\]\n(.*?)(?=^\[|\Z)', toml, re.M | re.S)
+    return m.group(1) if m else ""
+versions = dict(re.findall(r'^([\w-]+)\s*=\s*"([^"]+)"', section("versions"), re.M))
+libs = {}
+for alias, body in re.findall(r'^([\w-]+)\s*=\s*\{(.*?)\}', section("libraries"), re.M):
+    module = re.search(r'module\s*=\s*"([^"]+)"', body).group(1)
+    ref = re.search(r'version\.ref\s*=\s*"([^"]+)"', body)
+    ver = re.search(r'(?<!\.)version\s*=\s*"([^"]+)"', body)
+    libs[alias] = f"{module}:{versions[ref.group(1)] if ref else ver.group(1) if ver else ''}"
+used = re.findall(r'^\s*implementation\(libs\.([\w.]+)\)', open(f"{sdk}/antnexo/build.gradle.kts").read(), re.M)
+bad = []
+for alias in used:
+    coord = libs[alias.replace(".", "-")]
+    if f'"{coord}"' not in ours:
+        bad.append(coord)
+for c in bad:
+    print(f"vendor.sh: android/build.gradle.kts must declare implementation(\"{c}\") like the Android SDK", file=sys.stderr)
+sys.exit(1 if bad else 0)
+PY
+
 if [[ $check == 1 ]]; then
   status=0
   for p in ios/antnexo/Sources/antnexo/vendor android/src/main/vendor android/src/main/AndroidManifest.xml vendor.json; do
@@ -94,6 +124,8 @@ if [[ $check == 1 ]]; then
       status=1
     fi
   done
+  [[ $deps_ok == 1 ]] || status=1
   exit $status
 fi
+[[ $deps_ok == 1 ]] || exit 1
 echo "vendored antnexo-swift $swift_tag ($swift_sha), antnexo-android $android_tag ($android_sha)"

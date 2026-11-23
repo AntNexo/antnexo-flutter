@@ -25,6 +25,11 @@ plugins {
     id("com.android.library")
 }
 
+// AGP 9 compiles Kotlin itself; with AGP 8 (older Flutter apps) the Kotlin plugin has to be applied.
+if (extensions.findByName("kotlin") == null) {
+    apply(plugin = "org.jetbrains.kotlin.android")
+}
+
 android {
     // com.antnexo, like the Android SDK: its vendored code and resources (src/main/vendor) compile unchanged
     namespace = "com.antnexo"
@@ -67,10 +72,8 @@ android {
     }
 }
 
-kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-    }
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
 }
 
 dependencies {

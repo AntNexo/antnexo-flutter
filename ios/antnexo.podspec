@@ -21,11 +21,8 @@ In-app feedback for Flutter apps: the AntNexo board in a native sheet.
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
-  s.swift_version = '5.9'
+  s.swift_version = '6.0'
 
-  # If your plugin requires a privacy manifest, for example if it uses any
-  # required reason APIs, update the PrivacyInfo.xcprivacy file to describe your
-  # plugin's privacy impact, and then uncomment this line. For more information,
-  # see https://developer.apple.com/documentation/bundleresources/privacy_manifest_files
-  # s.resource_bundles = {'antnexo_privacy' => ['antnexo/Sources/antnexo/PrivacyInfo.xcprivacy']}
+  # The SDK reads UserDefaults (What's new read state): declared in the privacy manifest.
+  s.resource_bundles = {'antnexo_privacy' => ['antnexo/Sources/antnexo/PrivacyInfo.xcprivacy']}
 end
