@@ -137,5 +137,7 @@ jobs:
           flutter create --platforms ios floor_ios
           cd floor_ios
           printf '  config:\n    enable-swift-package-manager: true\n' >> pubspec.yaml
+          # the plugin needs iOS 15 (an older template's app targets 13: raising it is the app's step, README)
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 1[0-4]\.0;/IPHONEOS_DEPLOYMENT_TARGET = 15.0;/' ios/Runner.xcodeproj/project.pbxproj
           flutter pub add antnexo --path ../antnexo_flutter
           flutter build ios --simulator --debug
