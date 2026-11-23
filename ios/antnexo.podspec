@@ -21,7 +21,8 @@ In-app feedback for Flutter apps: the AntNexo board in a native sheet.
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
-  s.swift_version = '6.0'
+  # Swift 5 mode: Pigeon's generated async handlers aren't Swift 6 clean (the SDK is tested in Swift 6 in its repo).
+  s.swift_version = '5.9'
 
   # The SDK reads UserDefaults (What's new read state): declared in the privacy manifest.
   s.resource_bundles = {'antnexo_privacy' => ['antnexo/Sources/antnexo/PrivacyInfo.xcprivacy']}
