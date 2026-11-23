@@ -56,9 +56,46 @@ void main() {
   });
 
   test('a missing plugin is unavailable', () async {
+    // what Pigeon throws when no native handler is registered (web, no rebuild)
+    api.configureError = PlatformException(
+      code: 'channel-error',
+      message: 'Unable to establish connection',
+    );
+    await expectLater(configure(), throwsCode(AntNexoErrorCode.unavailable));
     api.configureError = MissingPluginException();
     await expectLater(configure(), throwsCode(AntNexoErrorCode.unavailable));
   });
+
+  test('configure called twice at once sets up native once', () async {
+    await Future.wait([configure(), configure()]);
+    expect(api.calls.where((c) => c.startsWith('setWrapper')), hasLength(1));
+  });
+
+  test(
+    'after close during the token wait, the next show opens at once',
+    () async {
+      await configure();
+      final slow = Completer<String?>();
+      AntNexo.identify(() => slow.future);
+      final first = AntNexo.show();
+      AntNexo.close();
+      expect(AntNexo.isShowing, isFalse);
+      AntNexo.identify(() async => 'jwt-2');
+      final second = AntNexo.show();
+      await pumpEventQueue();
+      expect(api.showArgs.single.token, 'jwt-2');
+      expect(AntNexo.isShowing, isTrue);
+      slow.complete(
+        'jwt-1',
+      ); // the cancelled opening's token arrives late: nothing happens, the open one stays
+      await first;
+      expect(AntNexo.isShowing, isTrue);
+      expect(api.showArgs, hasLength(1));
+      api.finishShow();
+      await second;
+      expect(AntNexo.isShowing, isFalse);
+    },
+  );
 
   test(
     'show before configure throws notConfigured and calls nothing',

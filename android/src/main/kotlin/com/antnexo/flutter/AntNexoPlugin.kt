@@ -94,8 +94,9 @@ class AntNexoPlugin : FlutterPlugin, ActivityAware, AntNexoHostApi {
         if (openings.isCancelled(generation)) return
         val a = activity
         if (a == null) {
+            // e.g. between activities during a rotation: Dart gets an error, not a silent "closed"
             Log.w(TAG, "AntNexo.show(): no activity")
-            return
+            throw FlutterError("unavailable", "AntNexo: unavailable", null)
         }
         // Kept until the sheet ends: only the SDK's prepare reads it, and a second prepare can't start while this
         // opening is presenting; onClosed below drops it right after the SDK clears presenting.
