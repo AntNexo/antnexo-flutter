@@ -1,0 +1,73 @@
+// Groovy, not Kotlin DSL: this script runs inside the app's build with whatever AGP the app has (8 on older Flutter,
+// 9 on current), and a Kotlin DSL script compiled against one AGP's API breaks on the other.
+group = "com.antnexo.flutter"
+version = "1.0.0"
+
+apply plugin: "com.android.library"
+// Kotlin: with AGP 9 Flutter's Gradle plugin takes care of it (AGP's built-in Kotlin, or it applies the Kotlin plugin
+// when an app turns built-in Kotlin off); older Flutter (AGP 8) doesn't, so there the plugin applies it itself.
+def agpMajor = com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION.tokenize(".")[0].toInteger()
+if (agpMajor < 9) {
+    pluginManager.apply("org.jetbrains.kotlin.android")
+}
+
+android {
+    // com.antnexo, like the Android SDK: its vendored code and resources (src/main/vendor) compile unchanged
+    namespace = "com.antnexo"
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 24
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs += ["src/main/kotlin", "src/main/vendor/kotlin"]
+            res.srcDirs += ["src/main/vendor/res"]
+        }
+        test {
+            java.srcDirs += ["src/test/kotlin"]
+        }
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            all {
+                useJUnitPlatform()
+                outputs.upToDateWhen { false }
+                testLogging {
+                    events "passed", "skipped", "failed", "standardOut", "standardError"
+                }
+            }
+        }
+    }
+}
+
+// Kotlin's JVM target = Java's, whichever Kotlin integration ends up active (looked up at runtime, no compile-time type).
+def kotlinJvmTarget17 = {
+    def kotlinExtension = project.extensions.findByName("kotlin")
+    if (kotlinExtension != null) {
+        def jvmTarget = kotlinExtension.class.classLoader.loadClass("org.jetbrains.kotlin.gradle.dsl.JvmTarget")
+        kotlinExtension.compilerOptions.jvmTarget.set(jvmTarget.fromTarget("17"))
+    }
+}
+plugins.withId("org.jetbrains.kotlin.android") { kotlinJvmTarget17() }
+afterEvaluate { kotlinJvmTarget17() }
+
+dependencies {
+    // the vendored Android SDK's dependencies, at its versions (checked by scripts/vendor.sh against its catalog)
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0"
+    implementation "androidx.webkit:webkit:1.18.0"
+    implementation "androidx.browser:browser:1.10.0"
+    implementation "androidx.activity:activity-ktx:1.13.0"
+    implementation "androidx.core:core-ktx:1.17.0"
+
+    testImplementation "org.jetbrains.kotlin:kotlin-test"
+}

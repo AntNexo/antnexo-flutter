@@ -1,0 +1,141 @@
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Every push and PR: Dart checks, the vendored sources against their tags, the Android unit tests and example build.
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Analyze and test
+        run: |
+          flutter pub get
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze
+          flutter test
+
+      - name: Vendored native SDKs match their tags
+        run: scripts/vendor.test.sh
+
+      - name: Install JDK
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Cache Gradle
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('example/android/gradle/wrapper/gradle-wrapper.properties', 'android/build.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build the example (Android)
+        working-directory: example
+        run: flutter build apk --debug --target-platform android-arm64
+
+      - name: Android unit tests
+        working-directory: example/android
+        run: ./gradlew --no-daemon --console=plain :antnexo:testDebugUnitTest
+
+  # The oldest Flutter we support (pubspec.yaml): a fresh app of that version with the plugin builds for Android. (The
+  # plugin's own tests need newer Dart: its dev dependency pigeon does; apps never resolve it.)
+  floor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: plugin
+
+      - name: Flutter 3.35
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.35.x'
+          channel: stable
+          cache: true
+
+      - name: Install JDK
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: A 3.35 app with the plugin builds
+        run: |
+          flutter create --platforms android floor_app
+          cd floor_app
+          flutter pub add antnexo --path ../plugin
+          flutter build apk --debug --target-platform android-arm64
+
+  # iOS on macOS (minutes cost 10x): release tags and by hand only. The example with SwiftPM, a fresh app with CocoaPods.
+  ios:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      # Not "antnexo-…": Flutter's SwiftPM can't resolve the in-repo example from a directory named that way (README).
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: antnexo_flutter
+
+      - name: Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build the example for the simulator (SwiftPM)
+        working-directory: antnexo_flutter/example
+        run: flutter build ios --simulator --debug
+
+      - name: A CocoaPods app with the plugin builds
+        run: |
+          flutter create --platforms ios pods_app
+          cd pods_app
+          printf '  config:\n    enable-swift-package-manager: false\n' >> pubspec.yaml
+          flutter pub add antnexo --path ../antnexo_flutter
+          flutter build ios --simulator --debug
+
+      # SwiftPM plugins depend on the FlutterFramework package, which Flutter generates since 3.44 (older Flutter: CocoaPods).
+      - name: Flutter 3.44
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.44.x'
+          channel: stable
+          cache: true
+
+      - name: A 3.44 app with the plugin builds for iOS (SwiftPM)
+        run: |
+          flutter create --platforms ios floor_ios
+          cd floor_ios
+          printf '  config:\n    enable-swift-package-manager: true\n' >> pubspec.yaml
+          flutter pub add antnexo --path ../antnexo_flutter
+          flutter build ios --simulator --debug
