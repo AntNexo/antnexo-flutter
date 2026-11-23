@@ -147,7 +147,7 @@ Calls throw `AntNexoException` with a `code`:
 | code | when |
 |---|---|
 | `invalidHost`, `invalidWorkspace`, `invalidOptions` | `configure` got a bad value |
-| `notConfigured` | `show` before `configure` |
+| `notConfigured` | `show` or `unreadCount` before `configure` |
 | `network`, `http` (with `status`), `badResponse` | `unreadCount` couldn't read the changelog (`network` also stands for any unexpected native failure) |
 | `unavailable` | the plugin isn't in this build (web, a widget test without a fake, or a rebuild missing), or on Android there was no activity to show the sheet from |
 
@@ -184,11 +184,19 @@ required-reason API the SDK uses (UserDefaults, for the What's new read state).
 
 ## Example app
 
-`example/` uses the plugin from source: `cd example && flutter run`. For scripted checks it takes
-`--dart-define=HOST=… WORKSPACE=… IDENTIFY=<token> SCENARIO=show|roadmap|screenshot|sheet`, plus in iOS debug builds
-`PROBE="<js>;;<js>"` to run JavaScript in the sheet and print the results; on Android the debug build allows WebView
-debugging over Chrome DevTools. The example allows plain HTTP to `*.localhost` for local boards; an app never needs
-that.
+`example/` uses the plugin from source: `cd example && flutter run`. For scripted checks it takes one `--dart-define`
+per option:
+
+```sh
+flutter run --dart-define=HOST=http://acme.localhost:8090 --dart-define=WORKSPACE=acme \
+  --dart-define=IDENTIFY=<token> --dart-define=SCENARIO=show   # show | roadmap | screenshot | sheet
+```
+
+In iOS debug builds `--dart-define=PROBE="<js>;;<js>"` runs JavaScript in the open sheet and prints the results; on
+Android the debug build allows WebView debugging over Chrome DevTools. For local boards the example allows plain HTTP
+to `localhost` and its subdomains (iOS: its Info.plist; Android: debug builds only); an app never needs that. On
+Android a local board needs `adb reverse tcp:8090 tcp:8090`, and `unreadCount()` can't reach `*.localhost` there (the
+system resolver knows only `localhost`; the sheet's WebView is fine).
 
 ## Working on the plugin
 
