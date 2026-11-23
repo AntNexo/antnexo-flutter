@@ -34,6 +34,237 @@ Object? _extractReplyValueOrThrow(
   return replyList.firstOrNull;
 }
 
+List<Object?> wrapResponse({
+  Object? result,
+  PlatformException? error,
+  bool empty = false,
+}) {
+  if (empty) {
+    return <Object?>[];
+  }
+  if (error == null) {
+    return <Object?>[result];
+  }
+  return <Object?>[error.code, error.message, error.details];
+}
+
+bool _deepEquals(Object? a, Object? b) {
+  if (identical(a, b)) {
+    return true;
+  }
+  if (a is double && b is double) {
+    if (a.isNaN && b.isNaN) {
+      return true;
+    }
+    return a == b;
+  }
+  if (a is List && b is List) {
+    return a.length == b.length &&
+        a.indexed.every(
+          ((int, dynamic) item) => _deepEquals(item.$2, b[item.$1]),
+        );
+  }
+  if (a is Map && b is Map) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (final MapEntry<Object?, Object?> entryA in a.entries) {
+      bool found = false;
+      for (final MapEntry<Object?, Object?> entryB in b.entries) {
+        if (_deepEquals(entryA.key, entryB.key)) {
+          if (_deepEquals(entryA.value, entryB.value)) {
+            found = true;
+            break;
+          } else {
+            return false;
+          }
+        }
+      }
+      if (!found) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return a == b;
+}
+
+int _deepHash(Object? value) {
+  if (value is List) {
+    return Object.hashAll(value.map(_deepHash));
+  }
+  if (value is Map) {
+    int result = 0;
+    for (final MapEntry<Object?, Object?> entry in value.entries) {
+      result += (_deepHash(entry.key) * 31) ^ _deepHash(entry.value);
+    }
+    return result;
+  }
+  if (value is double && value.isNaN) {
+    // Normalize NaN to a consistent hash.
+    return 0x7FF8000000000000.hashCode;
+  }
+  if (value is double && value == 0.0) {
+    // Normalize -0.0 to 0.0 so they have the same hash code.
+    return 0.0.hashCode;
+  }
+  return value.hashCode;
+}
+
+/// configure's options, validated in Dart; wire values ('new', 'dark', 'badge', …), null = the SDK's default.
+class NativeOptions {
+  NativeOptions({
+    this.tab,
+    this.tabs,
+    this.boards,
+    this.theme,
+    this.color,
+    this.prompts,
+    this.whatsNew,
+    this.language,
+  });
+
+  String? tab;
+
+  List<String>? tabs;
+
+  List<String>? boards;
+
+  String? theme;
+
+  String? color;
+
+  bool? prompts;
+
+  String? whatsNew;
+
+  String? language;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      tab,
+      tabs,
+      boards,
+      theme,
+      color,
+      prompts,
+      whatsNew,
+      language,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeOptions decode(Object result) {
+    result as List<Object?>;
+    return NativeOptions(
+      tab: result[0] as String?,
+      tabs: (result[1] as List<Object?>?)?.cast<String>(),
+      boards: (result[2] as List<Object?>?)?.cast<String>(),
+      theme: result[3] as String?,
+      color: result[4] as String?,
+      prompts: result[5] as bool?,
+      whatsNew: result[6] as String?,
+      language: result[7] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeOptions || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(tab, other.tab) &&
+        _deepEquals(tabs, other.tabs) &&
+        _deepEquals(boards, other.boards) &&
+        _deepEquals(theme, other.theme) &&
+        _deepEquals(color, other.color) &&
+        _deepEquals(prompts, other.prompts) &&
+        _deepEquals(whatsNew, other.whatsNew) &&
+        _deepEquals(language, other.language);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NativeOptions(tab: $tab, tabs: $tabs, boards: $boards, theme: $theme, color: $color, prompts: $prompts, whatsNew: $whatsNew, language: $language)';
+  }
+}
+
+/// An SDK event: type posted (id), closed, unread (count), signed_in (signedIn), identify_failed (code).
+class NativeEvent {
+  NativeEvent({
+    required this.type,
+    this.id,
+    this.count,
+    this.signedIn,
+    this.code,
+  });
+
+  String type;
+
+  String? id;
+
+  int? count;
+
+  bool? signedIn;
+
+  String? code;
+
+  List<Object?> _toList() {
+    return <Object?>[type, id, count, signedIn, code];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static NativeEvent decode(Object result) {
+    result as List<Object?>;
+    return NativeEvent(
+      type: result[0]! as String,
+      id: result[1] as String?,
+      count: result[2] as int?,
+      signedIn: result[3] as bool?,
+      code: result[4] as String?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! NativeEvent || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(type, other.type) &&
+        _deepEquals(id, other.id) &&
+        _deepEquals(count, other.count) &&
+        _deepEquals(signedIn, other.signedIn) &&
+        _deepEquals(code, other.code);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'NativeEvent(type: $type, id: $id, count: $count, signedIn: $signedIn, code: $code)';
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -41,6 +272,12 @@ class _PigeonCodec extends StandardMessageCodec {
     if (value is int) {
       buffer.putUint8(4);
       buffer.putInt64(value);
+    } else if (value is NativeOptions) {
+      buffer.putUint8(129);
+      writeValue(buffer, value.encode());
+    } else if (value is NativeEvent) {
+      buffer.putUint8(130);
+      writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
     }
@@ -49,6 +286,10 @@ class _PigeonCodec extends StandardMessageCodec {
   @override
   Object? readValueOfType(int type, ReadBuffer buffer) {
     switch (type) {
+      case 129:
+        return NativeOptions.decode(readValue(buffer)!);
+      case 130:
+        return NativeEvent.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -72,7 +313,8 @@ class AntNexoHostApi {
 
   final String pigeonVar_messageChannelSuffix;
 
-  /// Tells the native SDK that posts come from this plugin: platform flutter, the plugin's version.
+  /// Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+  /// hot restart), so it also resets the cancelled generation.
   Future<void> setWrapper(String sdk) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.antnexo.AntNexoHostApi.setWrapper$pigeonVar_messageChannelSuffix';
@@ -90,5 +332,177 @@ class AntNexoHostApi {
       pigeonVar_channelName,
       isNullValid: true,
     );
+  }
+
+  /// Errors: invalid_host, invalid_workspace.
+  Future<void> configure(
+    String host,
+    String workspace,
+    NativeOptions options,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.antnexo.AntNexoHostApi.configure$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[host, workspace, options],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
+  /// or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+  /// a later close or logout cancelled (one native may receive after this show) completes without a sheet.
+  Future<void> show(
+    String? tab,
+    bool screenshot,
+    String? token,
+    int generation,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.antnexo.AntNexoHostApi.show$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[tab, screenshot, token, generation],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Closes the sheet as Done does, and cancels openings up to generation [cancelled].
+  Future<void> close(int cancelled) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.antnexo.AntNexoHostApi.close$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[cancelled],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// What's new unread count. Errors: not_configured, http (details: status), bad_response, network.
+  Future<int> unreadCount() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.antnexo.AntNexoHostApi.unreadCount$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return pigeonVar_replyValue! as int;
+  }
+
+  /// Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled].
+  Future<void> logout(int cancelled) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.antnexo.AntNexoHostApi.logout$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[cancelled],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+  }
+
+  /// Debug builds only (the example's scripted checks): evaluates JavaScript in the open sheet, the result as a string.
+  Future<String?> evaluateInSheet(String js) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.antnexo.AntNexoHostApi.evaluateInSheet$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[js],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as String?;
+  }
+}
+
+abstract class AntNexoEventsApi {
+  static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
+
+  void onEvent(NativeEvent event);
+
+  static void setUp(
+    AntNexoEventsApi? api, {
+    BinaryMessenger? binaryMessenger,
+    String messageChannelSuffix = '',
+  }) {
+    messageChannelSuffix = messageChannelSuffix.isNotEmpty
+        ? '.$messageChannelSuffix'
+        : '';
+    {
+      final pigeonVar_channel = BasicMessageChannel<Object?>(
+        'dev.flutter.pigeon.antnexo.AntNexoEventsApi.onEvent$messageChannelSuffix',
+        pigeonChannelCodec,
+        binaryMessenger: binaryMessenger,
+      );
+      if (api == null) {
+        pigeonVar_channel.setMessageHandler(null);
+      } else {
+        pigeonVar_channel.setMessageHandler((Object? message) async {
+          final List<Object?> args = message! as List<Object?>;
+          final NativeEvent arg_event = args[0]! as NativeEvent;
+          try {
+            api.onEvent(arg_event);
+            return wrapResponse(empty: true);
+          } on PlatformException catch (e) {
+            return wrapResponse(error: e);
+          } catch (e) {
+            return wrapResponse(
+              error: PlatformException(code: 'error', message: e.toString()),
+            );
+          }
+        });
+      }
+    }
   }
 }

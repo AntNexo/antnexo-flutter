@@ -55,6 +55,10 @@ private func wrapError(_ error: Any) -> [Any?] {
   ]
 }
 
+private func createConnectionError(withChannelName channelName: String) -> PigeonError {
+  return PigeonError(code: "channel-error", message: "Unable to establish connection on channel: '\(channelName)'.", details: "")
+}
+
 enum MessagesPigeonInternal {
   static func isNullish(_ value: Any?) -> Bool {
     guard let innerValue = value else {
@@ -67,6 +71,115 @@ enum MessagesPigeonInternal {
 
     return innerValue is NSNull
   }
+  static func doubleEquals(_ lhs: Double, _ rhs: Double) -> Bool {
+    return (lhs.isNaN && rhs.isNaN) || lhs == rhs
+  }
+
+  static func doubleHash(_ value: Double, _ hasher: inout Hasher) {
+    if value.isNaN {
+      hasher.combine(0x7FF8000000000000)
+    } else {
+      // Normalize -0.0 to 0.0
+      hasher.combine(value == 0 ? 0 : value)
+    }
+  }
+
+  static func deepEquals(_ lhs: Any?, _ rhs: Any?) -> Bool {
+    let cleanLhs = nilOrValue(lhs) as Any?
+    let cleanRhs = nilOrValue(rhs) as Any?
+    switch (cleanLhs, cleanRhs) {
+    case (nil, nil):
+      return true
+
+    case (nil, _), (_, nil):
+      return false
+
+    case (let lhs as AnyObject, let rhs as AnyObject) where lhs === rhs:
+      return true
+
+    case is (Void, Void):
+      return true
+
+    case (let lhsArray, let rhsArray) as ([Double], [Double]):
+      guard lhsArray.count == rhsArray.count else { return false }
+      for (index, element) in lhsArray.enumerated() {
+        if !doubleEquals(element, rhsArray[index]) {
+          return false
+        }
+      }
+      return true
+
+    case (let lhsArray, let rhsArray) as ([Any?], [Any?]):
+      guard lhsArray.count == rhsArray.count else { return false }
+      for (index, element) in lhsArray.enumerated() {
+        if !deepEquals(element, rhsArray[index]) {
+          return false
+        }
+      }
+      return true
+
+    case (let lhsDictionary, let rhsDictionary) as ([AnyHashable: Any?], [AnyHashable: Any?]):
+      guard lhsDictionary.count == rhsDictionary.count else { return false }
+      for (lhsKey, lhsValue) in lhsDictionary {
+        var found = false
+        for (rhsKey, rhsValue) in rhsDictionary {
+          if deepEquals(lhsKey, rhsKey) {
+            if deepEquals(lhsValue, rhsValue) {
+              found = true
+              break
+            } else {
+              return false
+            }
+          }
+        }
+        if !found { return false }
+      }
+      return true
+
+    case (let lhs as Double, let rhs as Double):
+      return doubleEquals(lhs, rhs)
+
+    case (let lhsHashable, let rhsHashable) as (AnyHashable, AnyHashable):
+      return lhsHashable == rhsHashable
+
+    default:
+      return false
+    }
+  }
+
+  static func deepHash(value: Any?, hasher: inout Hasher) {
+    let cleanValue = nilOrValue(value) as Any?
+    if let cleanValue = cleanValue {
+      if let doubleValue = cleanValue as? Double {
+        doubleHash(doubleValue, &hasher)
+      } else if let valueList = cleanValue as? [Any?] {
+        for item in valueList {
+          deepHash(value: item, hasher: &hasher)
+        }
+      } else if let valueList = cleanValue as? [Double] {
+        for item in valueList {
+          doubleHash(item, &hasher)
+        }
+      } else if let valueDict = cleanValue as? [AnyHashable: Any?] {
+        var result = 0
+        for (key, value) in valueDict {
+          var entryKeyHasher = Hasher()
+          deepHash(value: key, hasher: &entryKeyHasher)
+          var entryValueHasher = Hasher()
+          deepHash(value: value, hasher: &entryValueHasher)
+          result = result &+ ((entryKeyHasher.finalize() &* 31) ^ entryValueHasher.finalize())
+        }
+        hasher.combine(result)
+      } else if let hashableValue = cleanValue as? AnyHashable {
+        hasher.combine(hashableValue)
+      } else {
+        hasher.combine(String(describing: cleanValue))
+      }
+    } else {
+      hasher.combine(0)
+    }
+  }
+
 }
 
 private func nilOrValue<T>(_ value: Any?) -> T? {
@@ -75,10 +188,160 @@ private func nilOrValue<T>(_ value: Any?) -> T? {
 }
 
 
+/// configure's options, validated in Dart; wire values ('new', 'dark', 'badge', …), null = the SDK's default.
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeOptions: Hashable, CustomStringConvertible {
+  var tab: String? = nil
+  var tabs: [String]? = nil
+  var boards: [String]? = nil
+  var theme: String? = nil
+  var color: String? = nil
+  var prompts: Bool? = nil
+  var whatsNew: String? = nil
+  var language: String? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeOptions? {
+    let tab: String? = nilOrValue(pigeonVar_list[0])
+    let tabs: [String]? = nilOrValue(pigeonVar_list[1])
+    let boards: [String]? = nilOrValue(pigeonVar_list[2])
+    let theme: String? = nilOrValue(pigeonVar_list[3])
+    let color: String? = nilOrValue(pigeonVar_list[4])
+    let prompts: Bool? = nilOrValue(pigeonVar_list[5])
+    let whatsNew: String? = nilOrValue(pigeonVar_list[6])
+    let language: String? = nilOrValue(pigeonVar_list[7])
+
+    return NativeOptions(
+      tab: tab,
+      tabs: tabs,
+      boards: boards,
+      theme: theme,
+      color: color,
+      prompts: prompts,
+      whatsNew: whatsNew,
+      language: language
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      tab,
+      tabs,
+      boards,
+      theme,
+      color,
+      prompts,
+      whatsNew,
+      language,
+    ]
+  }
+  static func == (lhs: NativeOptions, rhs: NativeOptions) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MessagesPigeonInternal.deepEquals(lhs.tab, rhs.tab) && MessagesPigeonInternal.deepEquals(lhs.tabs, rhs.tabs) && MessagesPigeonInternal.deepEquals(lhs.boards, rhs.boards) && MessagesPigeonInternal.deepEquals(lhs.theme, rhs.theme) && MessagesPigeonInternal.deepEquals(lhs.color, rhs.color) && MessagesPigeonInternal.deepEquals(lhs.prompts, rhs.prompts) && MessagesPigeonInternal.deepEquals(lhs.whatsNew, rhs.whatsNew) && MessagesPigeonInternal.deepEquals(lhs.language, rhs.language)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeOptions")
+    MessagesPigeonInternal.deepHash(value: tab, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: tabs, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: boards, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: theme, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: color, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: prompts, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: whatsNew, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: language, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "NativeOptions(tab: \(String(describing: tab)), tabs: \(String(describing: tabs)), boards: \(String(describing: boards)), theme: \(String(describing: theme)), color: \(String(describing: color)), prompts: \(String(describing: prompts)), whatsNew: \(String(describing: whatsNew)), language: \(String(describing: language)))"
+  }
+}
+
+/// An SDK event: type posted (id), closed, unread (count), signed_in (signedIn), identify_failed (code).
+///
+/// Generated class from Pigeon that represents data sent in messages.
+struct NativeEvent: Hashable, CustomStringConvertible {
+  var type: String
+  var id: String? = nil
+  var count: Int64? = nil
+  var signedIn: Bool? = nil
+  var code: String? = nil
+
+
+  // swift-format-ignore: AlwaysUseLowerCamelCase
+  static func fromList(_ pigeonVar_list: [Any?]) -> NativeEvent? {
+    let type = pigeonVar_list[0] as! String
+    let id: String? = nilOrValue(pigeonVar_list[1])
+    let count: Int64? = nilOrValue(pigeonVar_list[2])
+    let signedIn: Bool? = nilOrValue(pigeonVar_list[3])
+    let code: String? = nilOrValue(pigeonVar_list[4])
+
+    return NativeEvent(
+      type: type,
+      id: id,
+      count: count,
+      signedIn: signedIn,
+      code: code
+    )
+  }
+  func toList() -> [Any?] {
+    return [
+      type,
+      id,
+      count,
+      signedIn,
+      code,
+    ]
+  }
+  static func == (lhs: NativeEvent, rhs: NativeEvent) -> Bool {
+    if Swift.type(of: lhs) != Swift.type(of: rhs) {
+      return false
+    }
+    return MessagesPigeonInternal.deepEquals(lhs.type, rhs.type) && MessagesPigeonInternal.deepEquals(lhs.id, rhs.id) && MessagesPigeonInternal.deepEquals(lhs.count, rhs.count) && MessagesPigeonInternal.deepEquals(lhs.signedIn, rhs.signedIn) && MessagesPigeonInternal.deepEquals(lhs.code, rhs.code)
+  }
+
+  func hash(into hasher: inout Hasher) {
+    hasher.combine("NativeEvent")
+    MessagesPigeonInternal.deepHash(value: type, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: id, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: count, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: signedIn, hasher: &hasher)
+    MessagesPigeonInternal.deepHash(value: code, hasher: &hasher)
+  }
+
+  public var description: String {
+    return "NativeEvent(type: \(String(describing: type)), id: \(String(describing: id)), count: \(String(describing: count)), signedIn: \(String(describing: signedIn)), code: \(String(describing: code)))"
+  }
+}
+
 private class MessagesPigeonCodecReader: FlutterStandardReader {
+  override func readValue(ofType type: UInt8) -> Any? {
+    switch type {
+    case 129:
+      return NativeOptions.fromList(self.readValue() as! [Any?])
+    case 130:
+      return NativeEvent.fromList(self.readValue() as! [Any?])
+    default:
+      return super.readValue(ofType: type)
+    }
+  }
 }
 
 private class MessagesPigeonCodecWriter: FlutterStandardWriter {
+  override func writeValue(_ value: Any) {
+    if let value = value as? NativeOptions {
+      super.writeByte(129)
+      super.writeValue(value.toList())
+    } else if let value = value as? NativeEvent {
+      super.writeByte(130)
+      super.writeValue(value.toList())
+    } else {
+      super.writeValue(value)
+    }
+  }
 }
 
 private class MessagesPigeonCodecReaderWriter: FlutterStandardReaderWriter {
@@ -95,10 +358,26 @@ class MessagesPigeonCodec: FlutterStandardMessageCodec, @unchecked Sendable {
   static let shared = MessagesPigeonCodec(readerWriter: MessagesPigeonCodecReaderWriter())
 }
 
+
 /// Generated protocol from Pigeon that represents a handler of messages from Flutter.
 protocol AntNexoHostApi {
-  /// Tells the native SDK that posts come from this plugin: platform flutter, the plugin's version.
+  /// Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+  /// hot restart), so it also resets the cancelled generation.
   func setWrapper(sdk: String) throws
+  /// Errors: invalid_host, invalid_workspace.
+  func configure(host: String, workspace: String, options: NativeOptions) throws
+  /// Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
+  /// or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+  /// a later close or logout cancelled (one native may receive after this show) completes without a sheet.
+  func show(tab: String?, screenshot: Bool, token: String?, generation: Int64) async throws
+  /// Closes the sheet as Done does, and cancels openings up to generation [cancelled].
+  func close(cancelled: Int64) throws
+  /// What's new unread count. Errors: not_configured, http (details: status), bad_response, network.
+  func unreadCount() async throws -> Int64
+  /// Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled].
+  func logout(cancelled: Int64) async throws
+  /// Debug builds only (the example's scripted checks): evaluates JavaScript in the open sheet, the result as a string.
+  func evaluateInSheet(js: String) async throws -> String?
 }
 
 /// Generated setup class from Pigeon to handle messages through the `binaryMessenger`.
@@ -107,7 +386,8 @@ class AntNexoHostApiSetup {
   /// Sets up an instance of `AntNexoHostApi` to handle messages through the `binaryMessenger`.
   static func setUp(binaryMessenger: FlutterBinaryMessenger, api: AntNexoHostApi?, messageChannelSuffix: String = "") {
     let channelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
-    /// Tells the native SDK that posts come from this plugin: platform flutter, the plugin's version.
+    /// Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+    /// hot restart), so it also resets the cancelled generation.
     let setWrapperChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.setWrapper\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       setWrapperChannel.setMessageHandler { message, reply in
@@ -122,6 +402,151 @@ class AntNexoHostApiSetup {
       }
     } else {
       setWrapperChannel.setMessageHandler(nil)
+    }
+    /// Errors: invalid_host, invalid_workspace.
+    let configureChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.configure\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      configureChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let hostArg = args[0] as! String
+        let workspaceArg = args[1] as! String
+        let optionsArg = args[2] as! NativeOptions
+        do {
+          try api.configure(host: hostArg, workspace: workspaceArg, options: optionsArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      configureChannel.setMessageHandler(nil)
+    }
+    /// Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
+    /// or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+    /// a later close or logout cancelled (one native may receive after this show) completes without a sheet.
+    let showChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.show\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      showChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let tabArg: String? = nilOrValue(args[0])
+        let screenshotArg = args[1] as! Bool
+        let tokenArg: String? = nilOrValue(args[2])
+        let generationArg = args[3] as! Int64
+        Task { @MainActor in
+          do {
+            try await api.show(tab: tabArg, screenshot: screenshotArg, token: tokenArg, generation: generationArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      showChannel.setMessageHandler(nil)
+    }
+    /// Closes the sheet as Done does, and cancels openings up to generation [cancelled].
+    let closeChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.close\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      closeChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let cancelledArg = args[0] as! Int64
+        do {
+          try api.close(cancelled: cancelledArg)
+          reply(wrapResult(nil))
+        } catch {
+          reply(wrapError(error))
+        }
+      }
+    } else {
+      closeChannel.setMessageHandler(nil)
+    }
+    /// What's new unread count. Errors: not_configured, http (details: status), bad_response, network.
+    let unreadCountChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.unreadCount\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      unreadCountChannel.setMessageHandler { _, reply in
+        Task { @MainActor in
+          do {
+            let result = try await api.unreadCount()
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      unreadCountChannel.setMessageHandler(nil)
+    }
+    /// Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled].
+    let logoutChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.logout\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      logoutChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let cancelledArg = args[0] as! Int64
+        Task { @MainActor in
+          do {
+            try await api.logout(cancelled: cancelledArg)
+            reply(wrapResult(nil))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      logoutChannel.setMessageHandler(nil)
+    }
+    /// Debug builds only (the example's scripted checks): evaluates JavaScript in the open sheet, the result as a string.
+    let evaluateInSheetChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.antnexo.AntNexoHostApi.evaluateInSheet\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
+    if let api = api {
+      evaluateInSheetChannel.setMessageHandler { message, reply in
+        let args = message as! [Any?]
+        let jsArg = args[0] as! String
+        Task { @MainActor in
+          do {
+            let result = try await api.evaluateInSheet(js: jsArg)
+            reply(wrapResult(result))
+          } catch {
+            reply(wrapError(error))
+          }
+        }
+      }
+    } else {
+      evaluateInSheetChannel.setMessageHandler(nil)
+    }
+  }
+}
+
+/// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
+protocol AntNexoEventsApiProtocol {
+  @MainActor func onEvent(event eventArg: NativeEvent) async throws
+}
+class AntNexoEventsApi: AntNexoEventsApiProtocol {
+  private let binaryMessenger: FlutterBinaryMessenger
+  private let messageChannelSuffix: String
+  init(binaryMessenger: FlutterBinaryMessenger, messageChannelSuffix: String = "") {
+    self.binaryMessenger = binaryMessenger
+    self.messageChannelSuffix = messageChannelSuffix.count > 0 ? ".\(messageChannelSuffix)" : ""
+  }
+  var codec: MessagesPigeonCodec {
+    return MessagesPigeonCodec.shared
+  }
+  @MainActor func onEvent(event eventArg: NativeEvent) async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      let channelName: String = "dev.flutter.pigeon.antnexo.AntNexoEventsApi.onEvent\(messageChannelSuffix)"
+      let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
+      channel.sendMessage([eventArg] as [Any?]) { response in
+        guard let listResponse = response as? [Any?] else {
+          continuation.resume(throwing: createConnectionError(withChannelName: channelName))
+          return
+        }
+        if listResponse.count > 1 {
+          let code: String = listResponse[0] as! String
+          let message: String? = nilOrValue(listResponse[1])
+          let details: String? = nilOrValue(listResponse[2])
+          continuation.resume(throwing: PigeonError(code: code, message: message, details: details))
+        } else {
+          continuation.resume()
+        }
+      }
     }
   }
 }

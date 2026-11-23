@@ -13,7 +13,16 @@ import io.flutter.plugin.common.StandardMethodCodec
 import io.flutter.plugin.common.StandardMessageCodec
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 private object MessagesPigeonUtils {
+
+  fun createConnectionError(channelName: String): FlutterError {
+    return FlutterError("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
 
   fun wrapResult(result: Any?): List<Any?> {
     return listOf(result)
@@ -34,6 +43,150 @@ private object MessagesPigeonUtils {
       )
     }
   }
+  fun doubleEquals(a: Double, b: Double): Boolean {
+    // Normalize -0.0 to 0.0 and handle NaN equality.
+    return (if (a == 0.0) 0.0 else a) == (if (b == 0.0) 0.0 else b) || (a.isNaN() && b.isNaN())
+  }
+
+  fun floatEquals(a: Float, b: Float): Boolean {
+    // Normalize -0.0 to 0.0 and handle NaN equality.
+    return (if (a == 0.0f) 0.0f else a) == (if (b == 0.0f) 0.0f else b) || (a.isNaN() && b.isNaN())
+  }
+
+  fun doubleHash(d: Double): Int {
+    // Normalize -0.0 to 0.0 and handle NaN to ensure consistent hash codes.
+    val normalized = if (d == 0.0) 0.0 else d
+    val bits = java.lang.Double.doubleToLongBits(normalized)
+    return (bits xor (bits ushr 32)).toInt()
+  }
+
+  fun floatHash(f: Float): Int {
+    // Normalize -0.0 to 0.0 and handle NaN to ensure consistent hash codes.
+    val normalized = if (f == 0.0f) 0.0f else f
+    return java.lang.Float.floatToIntBits(normalized)
+  }
+
+  fun deepEquals(a: Any?, b: Any?): Boolean {
+    if (a === b) {
+      return true
+    }
+    if (a == null || b == null) {
+      return false
+    }
+    if (a is ByteArray && b is ByteArray) {
+      return a.contentEquals(b)
+    }
+    if (a is IntArray && b is IntArray) {
+      return a.contentEquals(b)
+    }
+    if (a is LongArray && b is LongArray) {
+      return a.contentEquals(b)
+    }
+    if (a is DoubleArray && b is DoubleArray) {
+      if (a.size != b.size) return false
+      for (i in a.indices) {
+        if (!doubleEquals(a[i], b[i])) return false
+      }
+      return true
+    }
+    if (a is FloatArray && b is FloatArray) {
+      if (a.size != b.size) return false
+      for (i in a.indices) {
+        if (!floatEquals(a[i], b[i])) return false
+      }
+      return true
+    }
+    if (a is Array<*> && b is Array<*>) {
+      if (a.size != b.size) return false
+      for (i in a.indices) {
+        if (!deepEquals(a[i], b[i])) return false
+      }
+      return true
+    }
+    if (a is List<*> && b is List<*>) {
+      if (a.size != b.size) return false
+      val iterA = a.iterator()
+      val iterB = b.iterator()
+      while (iterA.hasNext() && iterB.hasNext()) {
+        if (!deepEquals(iterA.next(), iterB.next())) return false
+      }
+      return true
+    }
+    if (a is Map<*, *> && b is Map<*, *>) {
+      if (a.size != b.size) return false
+      for (entry in a) {
+        val key = entry.key
+        var found = false
+        for (bEntry in b) {
+          if (deepEquals(key, bEntry.key)) {
+            if (deepEquals(entry.value, bEntry.value)) {
+              found = true
+              break
+            } else {
+              return false
+            }
+          }
+        }
+        if (!found) return false
+      }
+      return true
+    }
+    if (a is Double && b is Double) {
+      return doubleEquals(a, b)
+    }
+    if (a is Float && b is Float) {
+      return floatEquals(a, b)
+    }
+    return a == b
+  }
+
+  fun deepHash(value: Any?): Int {
+    return when (value) {
+      null -> 0
+      is ByteArray -> value.contentHashCode()
+      is IntArray -> value.contentHashCode()
+      is LongArray -> value.contentHashCode()
+      is DoubleArray -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + doubleHash(item)
+        }
+        result
+      }
+      is FloatArray -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + floatHash(item)
+        }
+        result
+      }
+      is Array<*> -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + deepHash(item)
+        }
+        result
+      }
+      is List<*> -> {
+        var result = 1
+        for (item in value) {
+          result = 31 * result + deepHash(item)
+        }
+        result
+      }
+      is Map<*, *> -> {
+        var result = 0
+        for (entry in value) {
+          result += ((deepHash(entry.key) * 31) xor deepHash(entry.value))
+        }
+        result
+      }
+      is Double -> doubleHash(value)
+      is Float -> floatHash(value)
+      else -> value.hashCode()
+    }
+  }
+
 }
 
 /**
@@ -47,19 +200,187 @@ class FlutterError (
   override val message: String? = null,
   val details: Any? = null
 ) : RuntimeException()
-private open class MessagesPigeonCodec : StandardMessageCodec() {
-  override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
-    return     super.readValueOfType(type, buffer)
+
+/**
+ * configure's options, validated in Dart; wire values ('new', 'dark', 'badge', …), null = the SDK's default.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NativeOptions (
+  val tab: String? = null,
+  val tabs: List<String>? = null,
+  val boards: List<String>? = null,
+  val theme: String? = null,
+  val color: String? = null,
+  val prompts: Boolean? = null,
+  val whatsNew: String? = null,
+  val language: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeOptions {
+      val tab = pigeonVar_list[0] as String?
+      val tabs = pigeonVar_list[1] as List<String>?
+      val boards = pigeonVar_list[2] as List<String>?
+      val theme = pigeonVar_list[3] as String?
+      val color = pigeonVar_list[4] as String?
+      val prompts = pigeonVar_list[5] as Boolean?
+      val whatsNew = pigeonVar_list[6] as String?
+      val language = pigeonVar_list[7] as String?
+      return NativeOptions(tab, tabs, boards, theme, color, prompts, whatsNew, language)
+    }
   }
-  override fun writeValue(stream: ByteArrayOutputStream, value: Any?)   {
-    super.writeValue(stream, value)
+  fun toList(): List<Any?> {
+    return listOf(
+      tab,
+      tabs,
+      boards,
+      theme,
+      color,
+      prompts,
+      whatsNew,
+      language,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeOptions
+    return MessagesPigeonUtils.deepEquals(this.tab, other.tab) && MessagesPigeonUtils.deepEquals(this.tabs, other.tabs) && MessagesPigeonUtils.deepEquals(this.boards, other.boards) && MessagesPigeonUtils.deepEquals(this.theme, other.theme) && MessagesPigeonUtils.deepEquals(this.color, other.color) && MessagesPigeonUtils.deepEquals(this.prompts, other.prompts) && MessagesPigeonUtils.deepEquals(this.whatsNew, other.whatsNew) && MessagesPigeonUtils.deepEquals(this.language, other.language)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.tab)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.tabs)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.boards)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.theme)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.color)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.prompts)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.whatsNew)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.language)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeOptions(tab=$tab, tabs=$tabs, boards=$boards, theme=$theme, color=$color, prompts=$prompts, whatsNew=$whatsNew, language=$language)"
   }
 }
 
+/**
+ * An SDK event: type posted (id), closed, unread (count), signed_in (signedIn), identify_failed (code).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class NativeEvent (
+  val type: String,
+  val id: String? = null,
+  val count: Long? = null,
+  val signedIn: Boolean? = null,
+  val code: String? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): NativeEvent {
+      val type = pigeonVar_list[0] as String
+      val id = pigeonVar_list[1] as String?
+      val count = pigeonVar_list[2] as Long?
+      val signedIn = pigeonVar_list[3] as Boolean?
+      val code = pigeonVar_list[4] as String?
+      return NativeEvent(type, id, count, signedIn, code)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      type,
+      id,
+      count,
+      signedIn,
+      code,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as NativeEvent
+    return MessagesPigeonUtils.deepEquals(this.type, other.type) && MessagesPigeonUtils.deepEquals(this.id, other.id) && MessagesPigeonUtils.deepEquals(this.count, other.count) && MessagesPigeonUtils.deepEquals(this.signedIn, other.signedIn) && MessagesPigeonUtils.deepEquals(this.code, other.code)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.type)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.id)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.count)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.signedIn)
+    result = 31 * result + MessagesPigeonUtils.deepHash(this.code)
+    return result
+  }
+  override fun toString(): String {
+    return "NativeEvent(type=$type, id=$id, count=$count, signedIn=$signedIn, code=$code)"
+  }
+}
+private open class MessagesPigeonCodec : StandardMessageCodec() {
+  override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
+    return when (type) {
+      129.toByte() -> {
+        (readValue(buffer) as? List<Any?>)?.let {
+          NativeOptions.fromList(it)
+        }
+      }
+      130.toByte() -> {
+        (readValue(buffer) as? List<Any?>)?.let {
+          NativeEvent.fromList(it)
+        }
+      }
+      else -> super.readValueOfType(type, buffer)
+    }
+  }
+  override fun writeValue(stream: ByteArrayOutputStream, value: Any?)   {
+    when (value) {
+      is NativeOptions -> {
+        stream.write(129)
+        writeValue(stream, value.toList())
+      }
+      is NativeEvent -> {
+        stream.write(130)
+        writeValue(stream, value.toList())
+      }
+      else -> super.writeValue(stream, value)
+    }
+  }
+}
+
+
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface AntNexoHostApi {
-  /** Tells the native SDK that posts come from this plugin: platform flutter, the plugin's version. */
+  /**
+   * Posts come from this plugin: platform flutter, the plugin's version. Called once per Dart isolate (again after a
+   * hot restart), so it also resets the cancelled generation.
+   */
   fun setWrapper(sdk: String)
+  /** Errors: invalid_host, invalid_workspace. */
+  fun configure(host: String, workspace: String, options: NativeOptions)
+  /**
+   * Shows the sheet with this opening's identify token (null: without). Completes when the sheet is gone (closed,
+   * or it couldn't open). [generation] is Dart's count of close/logout calls when this opening started: an opening
+   * a later close or logout cancelled (one native may receive after this show) completes without a sheet.
+   */
+  suspend fun show(tab: String?, screenshot: Boolean, token: String?, generation: Long)
+  /** Closes the sheet as Done does, and cancels openings up to generation [cancelled]. */
+  fun close(cancelled: Long)
+  /** What's new unread count. Errors: not_configured, http (details: status), bad_response, network. */
+  suspend fun unreadCount(): Long
+  /** Signs the person out, closing an open sheet and cancelling openings up to generation [cancelled]. */
+  suspend fun logout(cancelled: Long)
+  /** Debug builds only (the example's scripted checks): evaluates JavaScript in the open sheet, the result as a string. */
+  suspend fun evaluateInSheet(js: String): String?
 
   companion object {
     /** The codec used by AntNexoHostApi. */
@@ -87,6 +408,151 @@ interface AntNexoHostApi {
         } else {
           channel.setMessageHandler(null)
         }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.configure$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val hostArg = args[0] as String
+            val workspaceArg = args[1] as String
+            val optionsArg = args[2] as NativeOptions
+            val wrapped: List<Any?> = try {
+              api.configure(hostArg, workspaceArg, optionsArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.show$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val tabArg = args[0] as String?
+            val screenshotArg = args[1] as Boolean
+            val tokenArg = args[2] as String?
+            val generationArg = args[3] as Long
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                api.show(tabArg, screenshotArg, tokenArg, generationArg)
+                listOf(null)
+              } catch (exception: Throwable) {
+                MessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.close$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val cancelledArg = args[0] as Long
+            val wrapped: List<Any?> = try {
+              api.close(cancelledArg)
+              listOf(null)
+            } catch (exception: Throwable) {
+              MessagesPigeonUtils.wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.unreadCount$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.unreadCount())
+              } catch (exception: Throwable) {
+                MessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.logout$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val cancelledArg = args[0] as Long
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                api.logout(cancelledArg)
+                listOf(null)
+              } catch (exception: Throwable) {
+                MessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.antnexo.AntNexoHostApi.evaluateInSheet$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val jsArg = args[0] as String
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.evaluateInSheet(jsArg))
+              } catch (exception: Throwable) {
+                MessagesPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+    }
+  }
+}
+/** Generated class from Pigeon that represents Flutter messages that can be called from Kotlin. */
+class AntNexoEventsApi(private val binaryMessenger: BinaryMessenger, private val messageChannelSuffix: String = "") {
+  companion object {
+    /** The codec used by AntNexoEventsApi. */
+    val codec: MessageCodec<Any?> by lazy {
+      MessagesPigeonCodec()
+    }
+  }
+  suspend fun onEvent(eventArg: NativeEvent)
+{
+    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
+    return suspendCancellableCoroutine { continuation ->
+      val channelName = "dev.flutter.pigeon.antnexo.AntNexoEventsApi.onEvent$separatedMessageChannelSuffix"
+      val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
+      channel.send(listOf(eventArg)) {
+        if (it is List<*>) {
+          if (it.size > 1) {
+            continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))
+          } else {
+            continuation.resume(Unit)
+          }
+        } else {
+          continuation.resumeWithException(MessagesPigeonUtils.createConnectionError(channelName))
+        } 
       }
     }
   }
