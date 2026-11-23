@@ -19,7 +19,7 @@ void main() {
       RegExp(r"s\.version\s*=\s*'([^']+)'").firstMatch(podspec)?.group(1),
       sdkVersion,
     );
-    final gradle = File('android/build.gradle.kts').readAsStringSync();
+    final gradle = File('android/build.gradle').readAsStringSync();
     expect(
       RegExp(
         r'^version = "([^"]+)"',

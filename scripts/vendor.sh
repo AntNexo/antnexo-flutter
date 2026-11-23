@@ -86,9 +86,9 @@ open(f, "w").write(json.dumps(v, indent=2) + "\n")
 ' "$out/vendor.json" "$swift_tag" "$swift_sha" "$android_tag" "$android_sha"
 
 # The Android SDK's dependencies (its build.gradle.kts through gradle/libs.versions.toml at the tag) must be the ones
-# android/build.gradle.kts declares, version for version: that file is ours, so it is checked, never written.
+# android/build.gradle declares, version for version: that file is ours, so it is checked, never written.
 deps_ok=1
-python3 - "$work/android" "$root/android/build.gradle.kts" <<'PY' || deps_ok=0
+python3 - "$work/android" "$root/android/build.gradle" <<'PY' || deps_ok=0
 import re, sys
 # gradle/libs.versions.toml, read without tomllib (Python 3.11+): [versions] name = "x", [libraries] alias = { module =
 # "g:a", version.ref = "name" }.
@@ -111,7 +111,7 @@ for alias in used:
     if f'"{coord}"' not in ours:
         bad.append(coord)
 for c in bad:
-    print(f"vendor.sh: android/build.gradle.kts must declare implementation(\"{c}\") like the Android SDK", file=sys.stderr)
+    print(f"vendor.sh: android/build.gradle must declare implementation(\"{c}\") like the Android SDK", file=sys.stderr)
 sys.exit(1 if bad else 0)
 PY
 

@@ -26,7 +26,7 @@ scripts/vendor.sh --check || fail "--check fails on a clean tree"
 # A hand edit (and a dependency version that differs from the SDK's catalog) must be reported as such: --check's
 # stderr names it, so a clone failure can't pass for a caught edit. Files are restored even when interrupted.
 f=android/src/main/vendor/kotlin/com/antnexo/AntNexo.kt
-g=android/build.gradle.kts
+g=android/build.gradle
 bak="$(mktemp -d)"
 cp "$f" "$bak/f"
 cp "$g" "$bak/g"
